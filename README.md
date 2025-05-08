@@ -1,32 +1,64 @@
-# Fed: A Flower / PyTorch app
+# Federated Learning with Flower and PyTorch
 
-## Install dependencies and project
+This project demonstrates how to implement federated learning using Flower and PyTorch with different data partitioning strategies.
 
-```bash
-pip install -e .
+## Features
+
+- CIFAR-10 image classification using a VGG-style CNN model
+- Multiple data partitioning strategies
+- Configurable federated learning parameters
+- Centralized server-side evaluation
+
+## Data Partitioning Strategies
+
+The project supports the following partitioning strategies:
+
+1. **IID (Independent and Identically Distributed)** - Default strategy where data is randomly distributed across clients.
+2. **Dirichlet** - Non-IID partitioning with controllable heterogeneity using a Dirichlet distribution.
+3. **Pathological** - Each client gets data from a limited number of classes.
+4. **Linear** - Partition sizes are linearly correlated with client ID.
+5. **Square** - Partition sizes are correlated with the square of client ID.
+6. **Exponential** - Partition sizes are correlated with the exponential of client ID.
+7. **Shard** - Each partition contains data from specific classes.
+8. **Size** - Custom partition sizes defined by the user.
+
+## Configuration
+
+You can configure the partitioning strategy and other parameters in `pyproject.toml`:
+
+```toml
+[tool.flwr.app.config]
+# Server configuration
+num-server-rounds = 100
+fraction-fit = 0.3
+
+# Client configuration
+local-epochs = 7
+
+# Data partitioning configuration
+partitioning-strategy = "iid"
+dataset = "uoft-cs/cifar10"
+
+# Optional partitioning parameters (uncomment as needed)
+# For Dirichlet partitioning
+# dirichlet-alpha = 0.5
+
+# For Pathological partitioning  
+# classes-per-partition = 2
 ```
 
-## Run with the Simulation Engine
+## Adding New Partitioning Strategies
 
-In the `Fed` directory, use `flwr run` to run a local simulation:
+To add a new partitioning strategy:
 
-```bash
-flwr run .
-```
+1. Update `fed/partitioning.py` to include the new strategy
+2. Add the appropriate parameters to `pyproject.toml`
+## Performance Comparison
 
-Refer to the [How to Run Simulations](https://flower.ai/docs/framework/how-to-run-simulations.html) guide in the documentation for advice on how to optimize your simulations.
+Different partitioning strategies can significantly impact federated learning performance:
 
-## Run with the Deployment Engine
+To be added ...
 
-Follow this [how-to guide](https://flower.ai/docs/framework/how-to-run-flower-with-deployment-engine.html) to run the same app in this example but with Flower's Deployment Engine. After that, you might be interested in setting up [secure TLS-enabled communications](https://flower.ai/docs/framework/how-to-enable-tls-connections.html) and [SuperNode authentication](https://flower.ai/docs/framework/how-to-authenticate-supernodes.html) in your federation.
-
-You can run Flower on Docker too! Check out the [Flower with Docker](https://flower.ai/docs/framework/docker/index.html) documentation.
-
-## Resources
-
-- Flower website: [flower.ai](https://flower.ai/)
-- Check the documentation: [flower.ai/docs](https://flower.ai/docs/)
-- Give Flower a ⭐️ on GitHub: [GitHub](https://github.com/adap/flower)
-- Join the Flower community!
-  - [Flower Slack](https://flower.ai/join-slack/)
-  - [Flower Discuss](https://discuss.flower.ai/)
+- **IID**: Typically provides the best convergence rate and final accuracy
+- **Dirichlet**: Performance depends on the α parameter (smaller values = more heterogeneity = slower convergence)
+- **Pathological**: Most challenging for federated learning algorithms due to extreme label skew

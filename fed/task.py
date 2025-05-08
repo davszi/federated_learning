@@ -6,10 +6,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flwr.common import NDArrays
-from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
+
+from fed.partitioning import load_partitioned_dataset
+
 
 class Net(nn.Module):
     """Strict VGG-7 model for CIFAR-10"""
@@ -44,65 +45,49 @@ class Net(nn.Module):
         x = self.classifier(x)
         return x
 
-# class Net(nn.Module):
-#   def __init__(self):
-#     super(Net, self).__init__()
-#
-#     self.conv1 = nn.Conv2d(3, 16, 5, padding=2)
-#     self.bn1 = nn.BatchNorm2d(16)
-#
-#     self.fc1 = nn.Linear(16*16*16, 10)
-#
-#   def forward(self, x):
-#     # 32 x 32 x 3
-#     x = self.conv1(x) # 32 x 32 x 16
-#     x = F.relu(x) # 32 x 32 x 16
-#     x = self.bn1(x) # 32 x 32 x 16
-#     x = F.max_pool2d(x, 2, stride=2) # 16 x 16 x 16
-#
-#     x = x.view(-1, 16*16*16) # 1 x 4096
-#     x = self.fc1(x) # 1 x 10
-#
-#     x = F.log_softmax(x, dim=1) # 1 x 10
-#
-#     return x
+# Global cache for FederatedDataset
+_fds_cache = {}  # (dataset_name, strategy, num_partitions) -> FederatedDataset
 
-# class Net(nn.Module):
-#     """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
-#
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = nn.Conv2d(3, 6, 5)
-#         self.pool = nn.MaxPool2d(2, 2)
-#         self.conv2 = nn.Conv2d(6, 16, 5)
-#         self.fc1 = nn.Linear(16 * 5 * 5, 120)
-#         self.fc2 = nn.Linear(120, 84)
-#         self.fc3 = nn.Linear(84, 10)
-#
-#     def forward(self, x):
-#         x = self.pool(F.relu(self.conv1(x)))
-#         x = self.pool(F.relu(self.conv2(x)))
-#         x = x.view(-1, 16 * 5 * 5)
-#         x = F.relu(self.fc1(x))
-#         x = F.relu(self.fc2(x))
-#         return self.fc3(x)
+def load_data(partition_id: int, num_partitions: int, dataset_name: str = "uoft-cs/cifar10",
+              partitioning_strategy: str = "iid", test_size: float = 0.2, seed: float = 42, **partitioning_kwargs):
+    """Load partition data with configurable partitioning strategy.
 
-fds = None  # Cache FederatedDataset
+    Args:
+        partition_id: ID of the partition to load
+        num_partitions: Total number of partitions
+        dataset_name: Name of the dataset to load
+        partitioning_strategy: Strategy to use for partitioning
+        **partitioning_kwargs: Additional kwargs for the partitioner
 
+    Returns:
+        A tuple of (trainloader, testloader)
+    """
+    # Set partition_by for label-based strategies if not provided
+    if partitioning_strategy in ["dirichlet", "pathological", "shard"] and "partition_by" not in partitioning_kwargs:
+        partitioning_kwargs["partition_by"] = "label"
 
-def load_data(partition_id: int, num_partitions: int):
-    """Load partition CIFAR10 data."""
-    # Only initialize `FederatedDataset` once
-    global fds
-    if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
-            dataset="uoft-cs/cifar10",
-            partitioners={"train": partitioner},
+    # Create a cache key based on the dataset and partitioning configuration
+    cache_key = (dataset_name, partitioning_strategy, num_partitions,
+                 str(sorted(partitioning_kwargs.items())))
+
+    # Only initialize FederatedDataset once for a given configuration
+    global _fds_cache
+    if cache_key not in _fds_cache:
+        print(f"Creating new FederatedDataset with strategy: {partitioning_strategy}")
+        _fds_cache[cache_key] = load_partitioned_dataset(
+            dataset_name=dataset_name,
+            strategy=partitioning_strategy,
+            num_partitions=num_partitions,
+            **partitioning_kwargs
         )
+
+    fds = _fds_cache[cache_key]
+
+    # Load the specific partition
     partition = fds.load_partition(partition_id)
+
     # Divide data on each node: 80% train, 20% test
-    partition_train_test = partition.train_test_split(test_size=0.2, seed=42)
+    partition_train_test = partition.train_test_split(test_size=test_size, seed=seed)
     pytorch_transforms = Compose(
         [ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     )

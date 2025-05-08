@@ -41,18 +41,44 @@ class FlowerClient(NumPyClient):
 
 
 def client_fn(context: Context):
-    # Load model and data
     net = Net()
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    trainloader, valloader = load_data(partition_id, num_partitions)
+
+    partitioning_strategy = context.run_config.get("partitioning-strategy", "iid")
+
+    partitioning_kwargs = {}
+
+    # Always set partition_by to "label" for strategies that need it
+    if partitioning_strategy in ["dirichlet", "pathological", "shard"]:
+        partitioning_kwargs["partition_by"] = "label"
+
+    if "dirichlet-alpha" in context.run_config:
+        partitioning_kwargs["alpha"] = float(context.run_config["dirichlet-alpha"])
+
+    if "classes-per-partition" in context.run_config:
+        partitioning_kwargs["classes_per_partition"] = int(context.run_config["classes-per-partition"])
+
+    dataset_name = context.run_config.get("dataset", "uoft-cs/cifar10")
+
+    print(
+        f"Client {partition_id}: Loading data with {partitioning_strategy} partitioning"
+        f" and parameters {partitioning_kwargs}"
+    )
+
+    trainloader, valloader = load_data(
+        partition_id=partition_id,
+        num_partitions=num_partitions,
+        dataset_name=dataset_name,
+        partitioning_strategy=partitioning_strategy,
+        **partitioning_kwargs
+    )
+
     local_epochs = context.run_config["local-epochs"]
 
-    # Return Client instance
     return FlowerClient(net, trainloader, valloader, local_epochs, partition_id).to_client()
 
 
-# Flower ClientApp
 app = ClientApp(
     client_fn,
 )

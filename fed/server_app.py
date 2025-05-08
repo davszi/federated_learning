@@ -23,7 +23,9 @@ def server_fn(context: Context):
         fraction_evaluate=1.0,
         min_available_clients=2,
         initial_parameters=parameters,
-        evaluate_fn=evaluate,
+        evaluate_fn=lambda round, parameters, config: evaluate(
+            round, parameters, config, context
+        ),
     )
     config = ServerConfig(num_rounds=num_rounds)
 
@@ -34,14 +36,34 @@ def evaluate(
     server_round: int,
     parameters: NDArrays,
     config: dict[str, Scalar],
+    context: Context,
 ) -> Optional[tuple[float, dict[str, Scalar]]]:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     net = Net().to(device)
-    _, testloader = load_data(0, 1)
+
+    partitioning_strategy = context.run_config.get("partitioning-strategy", "iid")
+    dataset_name = context.run_config.get("dataset", "uoft-cs/cifar10")
+
+    # Get optional partitioning parameters
+    partitioning_kwargs = {}
+    if "dirichlet-alpha" in context.run_config:
+        partitioning_kwargs["alpha"] = float(context.run_config["dirichlet-alpha"])
+    if "classes-per-partition" in context.run_config:
+        partitioning_kwargs["classes_per_partition"] = int(context.run_config["classes-per-partition"])
+
+    print(f"Server-side evaluation for round {server_round} using partitioning strategy {partitioning_strategy} on {dataset_name}")
+
+    # Load test data from partition 0
+    _, testloader = load_data(
+        partition_id=0,
+        num_partitions=1,  # Server uses centralized evaluation
+        dataset_name=dataset_name,
+        partitioning_strategy=partitioning_strategy,
+    )
+
     set_weights(net, parameters)  # Update model with the latest parameters
     loss, accuracy = test(net, testloader, device)
     print(f"Server-side round {server_round} evaluation loss {loss} / accuracy {accuracy}")
     return loss, {"accuracy": accuracy}
 
-# Create ServerApp
 app = ServerApp(server_fn=server_fn)
