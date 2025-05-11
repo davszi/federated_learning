@@ -27,13 +27,28 @@ clientapp = "fed.client_app:app"
 
 [tool.flwr.app.config]
 # Server configuration
-num-server-rounds = 100
+run-name = "fed-server-dirichlet"
+num-server-rounds = 50
 fraction-fit = 0.3
+server_learning-rate = 0.01
+seed = -1 # -1 for random seed
 
 # Client configuration
-local-epochs = 7
+local-epochs = 10
+early-stopping = true
+batch-size = 64 #20
+client-learning-rate = 0.001 #0.0316
+client-optimizer = "adam"
 
-# Data partitioning configuration
+partitioning-strategy = "dirichlet"
+dataset = "uoft-cs/cifar10"
+
+# Optional partitioning parameters (uncomment as needed)
+# For Dirichlet partitioning
+dirichlet-alpha = 0.5
+# For Pathological partitioning
+# num_classes-per-partition = 2
+
 # PARTITIONING_STRATEGIES = {
 #    "iid": IidPartitioner,
 #    "dirichlet": DirichletPartitioner,
@@ -44,15 +59,6 @@ local-epochs = 7
 #    "square": SquarePartitioner,
 #    "exponential": ExponentialPartitioner,
 #}
-partitioning-strategy = "linear"
-dataset = "uoft-cs/cifar10"
-
-# Optional partitioning parameters (uncomment as needed)
-# For Dirichlet partitioning
-# dirichlet-alpha = 0.5
-
-# For Pathological partitioning
-# num_classes-per-partition = 2
 
 [tool.flwr.federations]
 default = "local-simulation"

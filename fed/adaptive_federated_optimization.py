@@ -25,33 +25,30 @@ class AdaptiveFederatedOptimization(FedAvg):
 
     Paper: Reddi et al. "Adaptive Federated Optimization" (https://arxiv.org/abs/2003.00295)
     """
-    def __init__(
-            self,
-            # FedAvg parameters
-            fraction_fit: float = 1.0,
-            fraction_evaluate: float = 1.0,
-            min_fit_clients: int = 2,
-            min_evaluate_clients: int = 2,
-            min_available_clients: int = 2,
-            evaluate_fn: Optional[
-                Callable[
-                    [int, NDArrays, dict[str, Scalar]],
-                    Optional[tuple[float, dict[str, Scalar]]],
-                ]
-            ] = None,
-            on_fit_config_fn: Optional[Callable[[int], dict[str, Scalar]]] = None,
-            on_evaluate_config_fn: Optional[Callable[[int], dict[str, Scalar]]] = None,
-            accept_failures: bool = True,
-            initial_parameters: Optional[Parameters] = None,
-            fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-            evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
 
-            optimizer_name: str = "adam",  # Options: "adagrad", "adam", "yogi"
-            server_learning_rate: float = 1.0,
-            beta1: float = 0.9,
-            beta2: float = 0.99,
-            epsilon: float = 1e-4,
-            tau: float = 0.001,  # Used in Yogi
+    def __init__(
+        self,
+        fraction_fit: float = 1.0,
+        fraction_evaluate: float = 1.0,
+        min_fit_clients: int = 2,
+        min_evaluate_clients: int = 2,
+        min_available_clients: int = 2,
+        evaluate_fn: Optional[
+            Callable[
+                [int, NDArrays, dict[str, Scalar]],
+                Optional[tuple[float, dict[str, Scalar]]],
+            ]
+        ] = None,
+        on_fit_config_fn: Optional[Callable[[int], dict[str, Scalar]]] = None,
+        on_evaluate_config_fn: Optional[Callable[[int], dict[str, Scalar]]] = None,
+        accept_failures: bool = True,
+        initial_parameters: Optional[Parameters] = None,
+        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        optimizer_name: str = "adam",  # Options: "adagrad", "adam", "yogi"
+        server_learning_rate: float = 0.01,
+        epsilon: float = 1e-3,
+        tau: float = 0.001,
     ) -> None:
         super().__init__(
             fraction_fit=fraction_fit,
@@ -70,10 +67,20 @@ class AdaptiveFederatedOptimization(FedAvg):
 
         self.optimizer_name = optimizer_name.lower()
         self.server_learning_rate = server_learning_rate
-        self.beta1 = beta1
-        self.beta2 = beta2
         self.epsilon = epsilon
         self.tau = tau
+        match self.optimizer_name:
+            case "adagrad":
+                self.beta1 = 0.0
+                self.beta2 = np.inf  # not used for Adagrad
+            case "adam":
+                self.beta1 = 0.9
+                self.beta2 = 0.99
+            case "yogi":
+                self.beta1 = 0.9
+                self.beta2 = 0.99
+            case _:
+                raise ValueError(f"Unsupported optimizer: {self.optimizer_name}")
 
         self.current_weights: Optional[NDArrays] = None
         self.m_t: Optional[List[np.ndarray]] = None  # First moment
@@ -83,7 +90,7 @@ class AdaptiveFederatedOptimization(FedAvg):
         return f"AdaptiveFedOpt(optimizer={self.optimizer_name})"
 
     def initialize_parameters(
-            self, client_manager: ClientManager
+        self, client_manager: ClientManager
     ) -> Optional[Parameters]:
         # Check if initial_parameters are provided
         if self.initial_parameters is not None:
@@ -101,7 +108,7 @@ class AdaptiveFederatedOptimization(FedAvg):
 
     def _compute_pseudo_gradient(self, avg_weights: NDArrays) -> NDArrays:
         """Compute the pseudo-gradient from client updates."""
-        if self.current_weights is None: # First round
+        if self.current_weights is None:  # First round
             self.current_weights = avg_weights
             return [np.zeros_like(w) for w in avg_weights]  # No update on first round
 
@@ -113,30 +120,35 @@ class AdaptiveFederatedOptimization(FedAvg):
 
         return pseudo_gradient
 
-    def _apply_adaptive_optimization(self, pseudo_gradient: List[np.ndarray]) -> Parameters:
+    def _apply_adaptive_optimization(
+        self, pseudo_gradient: List[np.ndarray]
+    ) -> Parameters:
         """Apply the chosen adaptive optimization method."""
         new_weights = []
 
-        for i, (w, g, m, v) in enumerate(zip(
-                self.current_weights, pseudo_gradient, self.m_t, self.v_t
-        )):
+        for i, (w, g, m, v) in enumerate(
+            zip(self.current_weights, pseudo_gradient, self.m_t, self.v_t)
+        ):
             # Update first moment estimate (momentum)
             self.m_t[i] = self.beta1 * m + (1 - self.beta1) * g
 
             # Update second moment based on optimizer
-            if self.optimizer_name == "adagrad":
-                self.v_t[i] = v + g * g
+            g_squared = g * g
+            match self.optimizer_name.lower():
+                case "adagrad":
+                    self.v_t[i] = v + g_squared
+                case "adam":
+                    self.v_t[i] = self.beta2 * v + (1 - self.beta2) * g_squared
+                case "yogi":
+                    self.v_t[i] = v - (1 - self.beta2) * g_squared * np.sign(
+                        v - g_squared
+                    )
+                case _:
+                    raise ValueError(f"Unsupported optimizer: {self.optimizer_name}")
 
-            elif self.optimizer_name == "adam":
-                self.v_t[i] = self.beta2 * v + (1 - self.beta2) * g * g
-
-            elif self.optimizer_name == "yogi":
-                self.v_t[i] = v - (1 - self.beta2) * g * g * np.sign(v - g * g)
-
-            else:
-                raise ValueError(f"Unsupported optimizer: {self.optimizer_name}")
-
-            step_size = self.server_learning_rate / (np.sqrt(self.v_t[i]) + self.epsilon)
+            step_size = self.server_learning_rate / (
+                np.sqrt(self.v_t[i]) + self.epsilon
+            )
             new_w = w - step_size * self.m_t[i]
             new_weights.append(new_w)
 
@@ -145,10 +157,10 @@ class AdaptiveFederatedOptimization(FedAvg):
         return ndarrays_to_parameters(new_weights)
 
     def aggregate_fit(
-            self,
-            server_round: int,
-            results: List[Tuple[ClientProxy, FitRes]],
-            failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+        self,
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         fed_avg_parameters_aggregated, metrics_aggregated = super().aggregate_fit(
             server_round=server_round,
@@ -156,9 +168,12 @@ class AdaptiveFederatedOptimization(FedAvg):
             failures=failures,
         )
         if fed_avg_parameters_aggregated is None:
+            print("FedAvg aggregation failed, failures:", failures)
             return None, {}
 
-        fed_avg_weights_aggregated = parameters_to_ndarrays(fed_avg_parameters_aggregated)
+        fed_avg_weights_aggregated = parameters_to_ndarrays(
+            fed_avg_parameters_aggregated
+        )
 
         pseudo_gradient = self._compute_pseudo_gradient(fed_avg_weights_aggregated)
 
