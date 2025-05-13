@@ -9,11 +9,12 @@ from fed.task import Net, get_weights, load_data, set_weights, test, train
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
-    def __init__(self, net, trainloader, valloader, testloader):
+    def __init__(self, net, trainloader, valloader, testloader, id):
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
         self.testloader = testloader
+        self.id = id
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.net.to(self.device)
 
@@ -32,11 +33,12 @@ class FlowerClient(NumPyClient):
                 "learning_rate": config["client-learning-rate"],
             },
         )
-
+        print(f"Client {self.id} finished training with final train loss: {avg_loss_per_epoch[-1]} and val loss: {avg_val_loss_per_epoch[-1]} and val accuracy: {accuracy_per_epoch[-1]}")
         return (
             get_weights(self.net),
             len(self.trainloader.dataset),
             {
+                "client_id": self.id,
                 "round": config["current_round"],
                 "train_loss": avg_loss_per_epoch[-1],
                 "val_loss": avg_val_loss_per_epoch[-1],
@@ -51,6 +53,7 @@ class FlowerClient(NumPyClient):
             avg_loss,
             len(self.testloader.dataset),
             {
+                "client_id": self.id,
                 "round": config["current_round"],
                 "test_loss": avg_loss,
                 "test_accuracy": accuracy,
@@ -80,7 +83,7 @@ def client_fn(context: Context):
 
     dataset_name = context.run_config.get("dataset", "uoft-cs/cifar10")
 
-    seed = context.node_config.get("seed", -1)
+    seed = context.run_config.get("seed", -1)
 
     trainloader, valloader, testloader = load_data(
         partition_id=partition_id,
@@ -94,7 +97,7 @@ def client_fn(context: Context):
         **partitioning_kwargs
     )
 
-    return FlowerClient(net, trainloader, valloader, testloader).to_client()
+    return FlowerClient(net, trainloader, valloader, testloader, partition_id).to_client()
 
 
 app = ClientApp(

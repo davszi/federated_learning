@@ -28,6 +28,7 @@ clientapp = "fed.client_app:app"
 [tool.flwr.app.config]
 # Server configuration
 run-name = "fed-server-dirichlet"
+num_clients = 10
 num-server-rounds = 50
 fraction-fit = 0.3
 server_learning-rate = 0.01
