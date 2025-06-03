@@ -9,11 +9,13 @@ class FileLogger(Logger):
         self.max_indices = {}
 
     def log(self, data: dict, name: str = '', step: int | float = None):
+
         if step is None:
             step = self.max_indices.get(name, 0) + 1
         self.max_indices[name] = max(step, self.max_indices.get(name, 0))
 
         for key, value in data.items():
-            file_path = self.base_path / f"{name}_{key}.csv"
+            file_name = f"{name}_{key}.csv" if name != '' else f'{key}.csv'
+            file_path = self.base_path / file_name
             with open(file_path, "a", newline="") as file:
                 file.write(f"{step},{value}\n")
