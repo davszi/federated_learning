@@ -25,9 +25,9 @@ PARTITIONING_STRATEGIES = {
 
 
 def get_partitioner(
-        strategy: str,
-        num_partitions: int,
-        **kwargs
+    strategy: str,
+    num_partitions: int,
+    **kwargs
 ) -> Partitioner:
     """Get a partitioner based on the strategy name.
 

@@ -13,6 +13,7 @@ dependencies = [
     "torch==2.5.1",
     "torchvision==0.20.1",
     "numpy>=1.24.0",
+    "wandb==0.19.11",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -27,9 +28,9 @@ clientapp = "fed.client_app:app"
 
 [tool.flwr.app.config]
 # Server configuration
-run-name = "fed-server-dirichlet"
+run-name = "fed-server-test-r2"
 num-server-rounds = 50
-fraction-fit = 0.3
+fraction-fit = 1.0
 server_learning-rate = 0.01
 seed = -1 # -1 for random seed
 
@@ -40,6 +41,7 @@ batch-size = 64 #20
 client-learning-rate = 0.001 #0.0316
 client-optimizer = "adam"
 
+logger-type="file" # "file" or "wandb"
 partitioning-strategy = "dirichlet"
 dataset = "uoft-cs/cifar10"
 
@@ -60,8 +62,9 @@ dirichlet-alpha = 0.5
 #    "exponential": ExponentialPartitioner,
 #}
 
+
 [tool.flwr.federations]
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 10
+options.num-supernodes = 5

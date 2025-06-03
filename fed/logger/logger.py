@@ -2,5 +2,5 @@ from abc import ABC, abstractmethod
 
 class Logger(ABC):
     @abstractmethod
-    def log(self, name: str, data: dict):
+    def log(self, data: dict, name: str = '', step: int | float = None):
         pass

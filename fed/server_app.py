@@ -6,9 +6,9 @@ from flwr.common import Context, ndarrays_to_parameters, Scalar, NDArrays
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 
 from fed.adaptive_federated_optimization import AdaptiveFederatedOptimization
+from fed.logger import LoggerFactory, Logger
 from fed.task import Net, get_weights, load_data, test, set_weights
 import torch
-import wandb
 
 client_registry = {}
 
@@ -22,6 +22,12 @@ def server_fn(context: Context):
     ndarrays = get_weights(Net())
     parameters = ndarrays_to_parameters(ndarrays)
 
+    run_name = context.run_config["run-name"]
+    logger_type = context.run_config["logger-type"]
+    logger = LoggerFactory.create(
+        logger_type, run_name=run_name, config=context.run_config
+    )
+
     # Define strategy
     strategy = AdaptiveFederatedOptimization(
         fraction_fit=fraction_fit,
@@ -29,12 +35,12 @@ def server_fn(context: Context):
         min_available_clients=2,
         initial_parameters=parameters,
         evaluate_fn=lambda round, parameters, config: evaluate_server_side(
-            round, parameters, config, context
+            round, parameters, config, context, logger=logger,
         ),
         on_fit_config_fn=get_on_fit_config_fn(context.run_config),
         on_evaluate_config_fn=get_on_evaluate_config_fn(context.run_config),
-        fit_metrics_aggregation_fn=get_fit_metrics_aggregation_fn(),
-        evaluate_metrics_aggregation_fn=get_evaluate_metrics_aggregation_fn(),
+        fit_metrics_aggregation_fn=get_fit_metrics_aggregation_fn(logger=logger),
+        evaluate_metrics_aggregation_fn=get_evaluate_metrics_aggregation_fn(logger=logger),
         accept_failures=False,
         # Server-side hyperparameters
         optimizer_name=context.run_config.get("optimizer", "adam"),
@@ -43,20 +49,6 @@ def server_fn(context: Context):
         ),
     )
     config = ServerConfig(num_rounds=num_rounds)
-
-    run_name = context.run_config["run-name"]
-
-    wandb.init(
-        entity="federated-flower-wanb",
-        project="AD-Project",
-        name=run_name,
-        reinit=True,
-        resume="allow",
-        config=context.run_config,
-    )
-
-    wandb.define_metric("centralized/test_loss", step_metric="centralized/fed-round")
-    wandb.define_metric("centralized/test_accuracy", step_metric="centralized/fed-round")
 
     return ServerAppComponents(strategy=strategy, config=config)
 
@@ -79,7 +71,7 @@ def get_on_evaluate_config_fn(
     return evaluate_config_fn
 
 
-def get_fit_metrics_aggregation_fn():
+def get_fit_metrics_aggregation_fn(logger: Logger = None):
     def fit_metrics_aggregation_fn(
         fit_metrics: List[Tuple[int, Dict[str, float]]],
     ) -> Dict[str, float]:
@@ -103,16 +95,17 @@ def get_fit_metrics_aggregation_fn():
                 {**client_metrics, "examples": examples}
             )
 
-            wandb.log(
-                {
-                    f"{client_id}/train_loss": client_metrics.get("train_loss", -1.0),
-                    f"{client_id}/val_loss": client_metrics.get(
+            logger.log(
+                 {
+                    "train_loss": client_metrics.get("train_loss", -1.0),
+                    "val_loss": client_metrics.get(
                         "val_loss", -1.0
                     ),
-                    f"{client_id}/val_accuracy": client_metrics.get(
+                    f"val_accuracy": client_metrics.get(
                         "val_accuracy", -1.0
                     ),
                 },
+                name=client_id,
                 step=int(client_metrics.get("round", -1)),
             )
         return {"test": 100}
@@ -120,7 +113,7 @@ def get_fit_metrics_aggregation_fn():
     return fit_metrics_aggregation_fn
 
 
-def get_evaluate_metrics_aggregation_fn():
+def get_evaluate_metrics_aggregation_fn(logger: Logger = None):
     """Return function that aggregates evaluation metrics from your client implementation."""
 
     def evaluate_metrics_aggregation_fn(
@@ -131,19 +124,20 @@ def get_evaluate_metrics_aggregation_fn():
             return {}
         for idx, (examples, client_metrics) in enumerate(eval_metrics):
             client_id = f"client_{idx}"
-            #
-            # print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
-            # wandb.log(
-            #     {
-            #         f"{client_id}/test_loss": client_metrics.get(
-            #             "test_loss", -1.0
-            #         ),
-            #         f"{client_id}/test_accuracy": client_metrics.get(
-            #             "test_accuracy", -1.0
-            #         ),
-            #     },
-            #     step=int(client_metrics.get("round", -1)),
-            # )
+
+            print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
+            logger.log(
+                {
+                    "test_loss": client_metrics.get(
+                        "test_loss", -1.0
+                    ),
+                    "test_accuracy": client_metrics.get(
+                        "test_accuracy", -1.0
+                    ),
+                },
+                name=client_id,
+                step=int(client_metrics.get("round", -1)),
+            )
 
         return {"test1": 100} #TODO implement aggregation
     return evaluate_metrics_aggregation_fn
@@ -154,6 +148,7 @@ def evaluate_server_side(
     parameters: NDArrays,
     config: dict[str, Scalar],
     context: Context,
+    logger: Logger = None,
 ) -> Optional[tuple[float, dict[str, Scalar]]]:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     net = Net().to(device)
@@ -187,12 +182,13 @@ def evaluate_server_side(
     set_weights(net, parameters)  # Update model with the latest parameters
     avg_loss, accuracy = test(net, testloader, device)
 
-    wandb.log(
+    logger.log(
         {
-            "centralized/test_loss": avg_loss,
-            "centralized/test_accuracy": accuracy,
-            "centralized/fed-round": server_round,
-        }
+            "test_loss": avg_loss,
+            "test_accuracy": accuracy,
+            "fed-round": server_round,
+        },
+        name='centralized'
     )
     return avg_loss, {"test_accuracy": accuracy}
 

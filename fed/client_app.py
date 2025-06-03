@@ -4,17 +4,19 @@ import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context, NDArrays, Scalar
 
+from fed.logger import LoggerFactory
 from fed.task import Net, get_weights, load_data, set_weights, test, train
 
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
-    def __init__(self, net, trainloader, valloader, testloader):
+    def __init__(self, net, trainloader, valloader, testloader, logger=None):
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
         self.testloader = testloader
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.logger = logger
         self.net.to(self.device)
 
     def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Scalar]]:
@@ -26,6 +28,7 @@ class FlowerClient(NumPyClient):
             self.valloader,
             config["local-epochs"],
             self.device,
+            logger=self.logger,
             early_stopping=config["early-stopping"],
             hyperparameters={
                 "optimizer": config["client-optimizer"],
@@ -94,7 +97,13 @@ def client_fn(context: Context):
         **partitioning_kwargs
     )
 
-    return FlowerClient(net, trainloader, valloader, testloader).to_client()
+    logger_type = context.run_config.get('logger-type', 'wandb')
+    run_name = context.run_config.get('run-name')
+    logger = LoggerFactory.create(
+        logger_type, run_name=f"{run_name}/client-{partition_id}", context=context.run_config
+    )
+
+    return FlowerClient(net, trainloader, valloader, testloader, logger=logger).to_client()
 
 
 app = ClientApp(

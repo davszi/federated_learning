@@ -18,5 +18,9 @@ class WandbLogger(Logger):
         wandb.define_metric("centralized/test_accuracy", step_metric="centralized/fed-round")
 
     @classmethod
-    def log(cls, _: str, data: dict):
-        wandb.log(data)
+    def log(cls, data: dict, name: str = '', step: int | float = None):
+        if name != '':
+            data = {
+                f"{name}/{key}": value for key, value in data.items()
+            }
+        wandb.log(data, step=step)
