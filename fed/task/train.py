@@ -53,7 +53,7 @@ def train(
     accuracy_per_epoch = []
 
     if early_stopping:
-        early_stopper = EarlyStopper(patience=5, min_delta=0.01)
+        early_stopper = EarlyStopper(patience=10, min_delta=0.01)
 
     for epoch_index in range(epochs):
         net.train()
