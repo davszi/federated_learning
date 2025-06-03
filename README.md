@@ -47,6 +47,11 @@ dataset = "uoft-cs/cifar10"
 # classes-per-partition = 2
 ```
 
+## Installation
+```shell
+pip install -e . -f https://download.pytorch.org/whl/torch  -f https://download.pytorch.org/whl/torchvision/
+```
+
 ## Adding New Partitioning Strategies
 
 To add a new partitioning strategy:
