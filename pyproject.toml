@@ -28,8 +28,8 @@ clientapp = "fed.client_app:app"
 
 [tool.flwr.app.config]
 # Server configuration
-run-name = "fed-server-test-r2"
-num-server-rounds = 50
+run-name = "fedavg-weighted-iid"
+num-server-rounds = 10
 fraction-fit = 1.0
 server_learning-rate = 0.01
 seed = -1 # -1 for random seed
@@ -37,12 +37,13 @@ seed = -1 # -1 for random seed
 # Client configuration
 local-epochs = 10
 early-stopping = true
-batch-size = 64 #20
-client-learning-rate = 0.001 #0.0316
+batch-size = 256
+client-learning-rate = 0.001
 client-optimizer = "adam"
 
 logger-type="file" # "file" or "wandb"
-partitioning-strategy = "dirichlet"
+strategy-name = "fedavg-weighted"
+partitioning-strategy = "iid"
 dataset = "uoft-cs/cifar10"
 
 # Optional partitioning parameters (uncomment as needed)
@@ -67,4 +68,6 @@ dirichlet-alpha = 0.5
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 5
+options.num-supernodes = 3
+options.backend.client-resources.num-cpus = 1
+options.backend.client-resources.num-gpus = 0.3

@@ -1,20 +1,32 @@
 """Fed: A Flower / PyTorch app."""
+import random
 
 import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context, NDArrays, Scalar
 
-from fed.logger import LoggerFactory
 from fed.task import Net, get_weights, load_data, set_weights, test, train
+
+
+def select_epochs_count(partition_id: int) -> int:
+    weights = [1, 2, 4, 2, 1]
+    if partition_id % 3 == 0:
+        num_range = range(3, 8)  # CPUs
+    elif partition_id % 3 == 1:
+        num_range = range(8, 13)  # Weak GPUs
+    else:
+        num_range = range(13, 18)  # Strong GPUs
+    return random.choices(num_range, weights=weights)[0]
 
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
-    def __init__(self, net, trainloader, valloader, testloader, logger=None):
+    def __init__(self, net, trainloader, valloader, testloader, num_epochs: int, logger=None):
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
         self.testloader = testloader
+        self.num_epochs = num_epochs
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.logger = logger
         self.net.to(self.device)
@@ -26,7 +38,7 @@ class FlowerClient(NumPyClient):
             self.net,
             self.trainloader,
             self.valloader,
-            config["local-epochs"],
+            self.num_epochs,
             self.device,
             logger=self.logger,
             early_stopping=config["early-stopping"],
@@ -44,6 +56,7 @@ class FlowerClient(NumPyClient):
                 "train_loss": avg_loss_per_epoch[-1],
                 "val_loss": avg_val_loss_per_epoch[-1],
                 "val_accuracy": accuracy_per_epoch[-1],
+                "num_epochs": self.num_epochs,
             },
         )
 
@@ -82,7 +95,6 @@ def client_fn(context: Context):
         )
 
     dataset_name = context.run_config.get("dataset", "uoft-cs/cifar10")
-
     seed = context.node_config.get("seed", -1)
 
     trainloader, valloader, testloader = load_data(
@@ -96,14 +108,9 @@ def client_fn(context: Context):
         batch_size=context.run_config["batch-size"],
         **partitioning_kwargs
     )
+    num_epochs = select_epochs_count(partition_id)
 
-    logger_type = context.run_config.get('logger-type', 'wandb')
-    run_name = context.run_config.get('run-name')
-    logger = LoggerFactory.create(
-        logger_type, run_name=f"{run_name}/client-{partition_id}", context=context.run_config
-    )
-
-    return FlowerClient(net, trainloader, valloader, testloader, logger=logger).to_client()
+    return FlowerClient(net, trainloader, valloader, testloader, num_epochs).to_client()
 
 
 app = ClientApp(

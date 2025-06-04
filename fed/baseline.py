@@ -3,13 +3,14 @@ import torch
 from fed.logger.factory import LoggerFactory
 from fed.task import Net, load_data, test, train
 
+
 def main():
     run_name = "centralized-baseline"
     logger_type = "file"
 
     config = {
-        "epochs": 50,
-        "batch_size": 2048,
+        "epochs": 100,
+        "batch_size": 4096,
         "lr": 0.001,
         "optimizer": "adam",
         "architecture": "VGG11",
@@ -41,6 +42,7 @@ def main():
         device,
         logger=logger,
         early_stopping=True,
+        early_stopping_patience=10,
         hyperparameters={
             "optimizer": config["optimizer"],
             "learning_rate": config["lr"],

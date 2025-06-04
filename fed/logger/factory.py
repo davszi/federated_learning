@@ -7,11 +7,11 @@ from .wandb_logger import WandbLogger
 
 class LoggerFactory:
     @classmethod
-    def create(cls, name: Literal['file', 'wandb'], **kwargs) -> Logger:
+    def create(cls, name: str, run_name: str, config: dict = None) -> Logger:
         if name == 'file':
-            return FileLogger(base_path=f"logs/{kwargs.get('run_name')}")
+            return FileLogger(base_path=f"logs/{run_name}", config=config)
         elif name == 'wandb':
-            return WandbLogger(run_name=kwargs.get('run_name'), config=kwargs.get('config'))
+            return WandbLogger(run_name=run_name, config=config)
         else:
             raise ValueError(f'Unknown logger name: {name}')
 

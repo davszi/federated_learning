@@ -28,6 +28,7 @@ def train(
     device: torch.device,
     logger: Logger | None = None,
     early_stopping: bool = False,
+    early_stopping_patience: int = 5,
     hyperparameters: dict[str, float | str] | None = None,
 ) -> tuple[list[float], list[float], list[float]]:
     """Train the model and return per-epoch metrics."""
@@ -53,12 +54,12 @@ def train(
     accuracy_per_epoch = []
 
     if early_stopping:
-        early_stopper = EarlyStopper(patience=10, min_delta=0.01)
+        early_stopper = EarlyStopper(patience=early_stopping_patience, min_delta=0.01)
 
     for epoch_index in range(epochs):
         net.train()
         running_loss = 0.0
-        for batch in trainloader:
+        for batch_idx, batch in enumerate(trainloader):
             images = batch["img"].to(device)
             labels = batch["label"].to(device)
             optimizer.zero_grad()

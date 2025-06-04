@@ -1,12 +1,19 @@
 from pathlib import Path
+import yaml
 
 from .logger import Logger
 
 class FileLogger(Logger):
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str, config: dict | None = None):
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.max_indices = {}
+
+        if config is not None:
+            config_path = self.base_path / "config.yaml"
+            with open(config_path, "w") as f:
+                yaml.dump(config, f)
+
 
     def log(self, data: dict, name: str = '', step: int | float = None):
 

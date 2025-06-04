@@ -1,14 +1,15 @@
 """Fed: A Flower / PyTorch app."""
-
+from pathlib import Path
 from typing import Optional, Dict, Union, Callable, List, Tuple
 
+import torch
 from flwr.common import Context, ndarrays_to_parameters, Scalar, NDArrays
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
+from flwr.server.strategy import FedAvg
 
-from fed.adaptive_federated_optimization import AdaptiveFederatedOptimization
+from fed.strategies import AdaptiveFederatedOptimization, WeightedFedAvg
 from fed.logger import LoggerFactory, Logger
 from fed.task import Net, get_weights, load_data, test, set_weights
-import torch
 
 client_registry = {}
 
@@ -28,26 +29,42 @@ def server_fn(context: Context):
         logger_type, run_name=run_name, config=context.run_config
     )
 
+    best_model_data = {
+        "loss": float("inf"),
+        "path": Path('models') / f'{run_name}.pth'
+    }
+
     # Define strategy
-    strategy = AdaptiveFederatedOptimization(
-        fraction_fit=fraction_fit,
-        fraction_evaluate=1.0,
-        min_available_clients=2,
-        initial_parameters=parameters,
-        evaluate_fn=lambda round, parameters, config: evaluate_server_side(
-            round, parameters, config, context, logger=logger,
+    common_strategy_props = {
+        "fraction_fit": fraction_fit,
+        "fraction_evaluate": 1.0,
+        "min_available_clients": 2,
+        "initial_parameters": parameters,
+        "evaluate_fn": lambda round, parameters, config: evaluate_server_side(
+            round, parameters, config, context, logger=logger, best_model=best_model_data
         ),
-        on_fit_config_fn=get_on_fit_config_fn(context.run_config),
-        on_evaluate_config_fn=get_on_evaluate_config_fn(context.run_config),
-        fit_metrics_aggregation_fn=get_fit_metrics_aggregation_fn(logger=logger),
-        evaluate_metrics_aggregation_fn=get_evaluate_metrics_aggregation_fn(logger=logger),
-        accept_failures=False,
-        # Server-side hyperparameters
-        optimizer_name=context.run_config.get("optimizer", "adam"),
-        server_learning_rate=float(
-            context.run_config.get("server-learning-rate", 0.01)
-        ),
-    )
+        "on_fit_config_fn": get_on_fit_config_fn(context.run_config),
+        "on_evaluate_config_fn": get_on_evaluate_config_fn(context.run_config),
+        "fit_metrics_aggregation_fn": get_fit_metrics_aggregation_fn(logger=logger),
+        "evaluate_metrics_aggregation_fn": get_evaluate_metrics_aggregation_fn(logger=logger),
+        "accept_failures": False,
+    }
+    strategy_name = context.run_config["strategy-name"]
+    if strategy_name == 'fedavg':
+        strategy = FedAvg(**common_strategy_props)
+    elif strategy_name == 'adaptive-fed-optimization':
+        strategy = AdaptiveFederatedOptimization(
+            **common_strategy_props,
+            # Server-side hyperparameters
+            optimizer_name=context.run_config.get("optimizer", "adam"),
+            server_learning_rate=float(
+                context.run_config.get("server-learning-rate", 0.01)
+            ),
+        )
+    elif strategy_name == 'fedavg-weighted':
+        strategy = WeightedFedAvg(**common_strategy_props)
+    else:
+        raise ValueError(f"Unknown strategy: {strategy_name}")
     config = ServerConfig(num_rounds=num_rounds)
 
     return ServerAppComponents(strategy=strategy, config=config)
@@ -149,21 +166,12 @@ def evaluate_server_side(
     config: dict[str, Scalar],
     context: Context,
     logger: Logger = None,
+    best_model: dict = None,
 ) -> Optional[tuple[float, dict[str, Scalar]]]:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     net = Net().to(device)
 
-    partitioning_strategy = context.run_config.get("partitioning-strategy", "iid")
     dataset_name = context.run_config.get("dataset", "uoft-cs/cifar10")
-
-    partitioning_kwargs = {}
-    if "dirichlet-alpha" in context.run_config:
-        partitioning_kwargs["alpha"] = float(context.run_config["dirichlet-alpha"])
-    if "classes-per-partition" in context.run_config:
-        partitioning_kwargs["classes_per_partition"] = int(
-            context.run_config["classes-per-partition"]
-        )
-
     seed = context.run_config.get("seed", -1)
 
     # Load test data from partition 0
@@ -171,12 +179,11 @@ def evaluate_server_side(
         partition_id=0,
         num_partitions=1,  # Server uses centralized evaluation
         dataset_name=dataset_name,
-        partitioning_strategy=partitioning_strategy,
+        partitioning_strategy="iid",
         test_size=0.99, # 0.0 and 1.0 is not allowed
         validate_size=0.0,
         seed=seed if seed != -1 else None,
         batch_size=context.run_config["batch-size"],
-        partitioning_kwargs=partitioning_kwargs,
     )
 
     set_weights(net, parameters)  # Update model with the latest parameters
@@ -190,6 +197,12 @@ def evaluate_server_side(
         },
         name='centralized'
     )
+    if avg_loss < best_model["loss"]:
+        best_model["loss"] = avg_loss
+        best_model["path"].parent.mkdir(parents=True, exist_ok=True)
+        torch.save(net.state_dict(), best_model["path"])
+        print(f"[Round {server_round}] New best model saved with test_loss={avg_loss:.4f}")
+
     return avg_loss, {"test_accuracy": accuracy}
 
 

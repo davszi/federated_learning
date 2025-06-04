@@ -4,7 +4,7 @@ from .logger import Logger
 
 
 class WandbLogger(Logger):
-    def __init__(self, run_name: str, config: dict):
+    def __init__(self, run_name: str, config: dict | None = None):
         wandb.init(
             entity="federated-flower-wanb",
             project="AD-Project",
