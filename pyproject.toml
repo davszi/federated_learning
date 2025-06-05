@@ -27,31 +27,34 @@ serverapp = "fed.server_app:app"
 clientapp = "fed.client_app:app"
 
 [tool.flwr.app.config]
-# Server configuration
+# General configuration
+dataset = "uoft-cs/cifar10"
+partitioning-strategy = "iid" # Available strategies: "iid", "dirichlet", "pathological", "shard", "size", "linear", "square", "exponential"
+seed = 35 # -1 for random seed
+
 run-name = "fedavg-weighted-iid"
+logger-type="wandb" # "file" or "wandb"
+
+strategy-name = "fedavg-weighted"
+strat_optimizer = "adagrad" # "yogi" or "adam" or "adagrad"
+
+# Ex of Optional partitioning parameters (uncomment as needed)
+# For Dirichlet partitioning
+# dirichlet-alpha = 0.5
+# For Pathological partitioning
+# num_classes-per-partition = 2
+
+# Server configuration
 num-server-rounds = 10
 fraction-fit = 1.0
-
 server_learning-rate = 0.01
-seed = -1 # -1 for random seed
 
 # Client configuration
 local-epochs = 10
 early-stopping = true
 batch-size = 256
 client-learning-rate = 0.001
-client-optimizer = "adam"
-
-logger-type="wandb" # "file" or "wandb"
-strategy-name = "fedavg-weighted"
-partitioning-strategy = "iid" # Available strategies: "iid", "dirichlet", "pathological", "shard", "size", "linear", "square", "exponential"
-dataset = "uoft-cs/cifar10"
-
-# Optional partitioning parameters (uncomment as needed)
-# For Dirichlet partitioning
-#dirichlet-alpha = 0.5
-# For Pathological partitioning
-# num_classes-per-partition = 2
+client-optimizer = "adam" # "adam" or "sgd"
 
 [tool.flwr.federations]
 default = "local-simulation"

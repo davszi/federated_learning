@@ -61,7 +61,7 @@ def server_fn(context: Context):
         strategy = AdaptiveFederatedOptimization(
             **common_strategy_props,
             # Server-side hyperparameters
-            optimizer_name=context.run_config.get("optimizer", "adam"),
+            optimizer_name=context.run_config.get("strat_optimizer", "adam"),
             server_learning_rate=float(
                 context.run_config.get("server-learning-rate", 0.01)
             ),
