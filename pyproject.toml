@@ -31,6 +31,7 @@ clientapp = "fed.client_app:app"
 run-name = "fedavg-weighted-iid"
 num-server-rounds = 10
 fraction-fit = 1.0
+
 server_learning-rate = 0.01
 seed = -1 # -1 for random seed
 
@@ -41,7 +42,7 @@ batch-size = 256
 client-learning-rate = 0.001
 client-optimizer = "adam"
 
-logger-type="file" # "file" or "wandb"
+logger-type="wandb" # "file" or "wandb"
 strategy-name = "fedavg-weighted"
 partitioning-strategy = "iid"
 dataset = "uoft-cs/cifar10"

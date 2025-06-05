@@ -10,6 +10,7 @@ from flwr.server.strategy import FedAvg
 from fed.strategies import AdaptiveFederatedOptimization, WeightedFedAvg
 from fed.logger import LoggerFactory, Logger
 from fed.task import Net, get_weights, load_data, test, set_weights
+import wandb
 
 client_registry = {}
 
@@ -95,10 +96,21 @@ def get_fit_metrics_aggregation_fn(logger: Logger = None):
         """Aggregate training metrics from clients."""
         if not fit_metrics:
             return {}
-        # Process each client's metrics
+
+        aggregated_metrics = {
+            "train_loss": 0.0,
+            "val_loss": 0.0,
+            "val_accuracy": 0.0,
+            "total_examples": 0,
+            "participating_clients": 0,
+            "total_registered_clients": 0
+        }
+
         for idx, (examples, client_metrics) in enumerate(fit_metrics):
-            # Use index as client ID if not provided in metrics
-            client_id = f"client_{idx}"
+            client_id = client_metrics.get("client_id", -1)
+            client_name = f"client_{idx}"
+            print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
+
             # Register client if not seen before
             if client_id not in client_registry:
                 client_registry[client_id] = {
@@ -113,19 +125,44 @@ def get_fit_metrics_aggregation_fn(logger: Logger = None):
             )
 
             logger.log(
-                 {
-                    "train_loss": client_metrics.get("train_loss", -1.0),
-                    "val_loss": client_metrics.get(
-                        "val_loss", -1.0
-                    ),
-                    f"val_accuracy": client_metrics.get(
+                {
+                    f"{client_name}/train_loss": client_metrics.get("train_loss", -1.0),
+                    f"{client_name}/val_loss": client_metrics.get("val_loss", -1.0),
+                    f"{client_name}/val_accuracy": client_metrics.get(
                         "val_accuracy", -1.0
                     ),
+                    f"centralized/fed-round": client_metrics.get("round", -1),
                 },
-                name=client_id,
+                name=client_name,
                 step=int(client_metrics.get("round", -1)),
             )
-        return {"test": 100}
+
+            aggregated_metrics["total_examples"] += examples
+            aggregated_metrics["train_loss"] += examples * client_metrics.get("train_loss", 0.0)
+            aggregated_metrics["val_loss"] += examples * client_metrics.get("val_loss", 0.0)
+            aggregated_metrics["val_accuracy"] += examples * client_metrics.get("val_accuracy", 0.0)
+
+        if aggregated_metrics["total_examples"] > 0:
+            aggregated_metrics["train_loss"] /= aggregated_metrics["total_examples"]
+            aggregated_metrics["val_loss"] /= aggregated_metrics["total_examples"]
+            aggregated_metrics["val_accuracy"] /= aggregated_metrics["total_examples"]
+
+        aggregated_metrics["participating_clients"] = len(fit_metrics)
+        aggregated_metrics["total_registered_clients"] = len(client_registry)
+
+        current_round = fit_metrics[0][1].get("round", -1) if fit_metrics else -1
+
+        logger.log(
+            {
+                "centralized/client_avg_train_loss": aggregated_metrics["train_loss"],
+                "centralized/client_avg_val_loss": aggregated_metrics["val_loss"],
+                "centralized/client_avg_val_accuracy": aggregated_metrics["val_accuracy"],
+                "centralized/fed-round": current_round,
+            },
+            name="centralized/client_avg"
+        )
+
+        return aggregated_metrics
 
     return fit_metrics_aggregation_fn
 
@@ -139,24 +176,58 @@ def get_evaluate_metrics_aggregation_fn(logger: Logger = None):
         """Aggregate evaluation metrics from clients."""
         if not eval_metrics:
             return {}
+
+        aggregated_metrics = {
+            "test_loss": 0.0,
+            "test_accuracy": 0.0,
+            "total_examples": 0,
+        }
+
+
         for idx, (examples, client_metrics) in enumerate(eval_metrics):
-            client_id = f"client_{idx}"
+            client_id = client_metrics.get("client_id", -1)
+            client_name = f"client_{idx}"
+            print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
 
             print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
             logger.log(
                 {
-                    "test_loss": client_metrics.get(
+                    f"{client_name}/test_loss": client_metrics.get(
                         "test_loss", -1.0
                     ),
-                    "test_accuracy": client_metrics.get(
+                    f"{client_name}/test_accuracy": client_metrics.get(
                         "test_accuracy", -1.0
                     ),
                 },
-                name=client_id,
+                name=client_name,
                 step=int(client_metrics.get("round", -1)),
             )
 
-        return {"test1": 100} #TODO implement aggregation
+            aggregated_metrics["total_examples"] += examples
+            aggregated_metrics["test_loss"] += examples * client_metrics.get(
+                "test_loss", 0.0
+            )
+            aggregated_metrics["test_accuracy"] += examples * client_metrics.get(
+                "test_accuracy", 0.0
+            )
+
+        if aggregated_metrics["total_examples"] > 0:
+            aggregated_metrics["test_loss"] /= aggregated_metrics["total_examples"]
+            aggregated_metrics["test_accuracy"] /= aggregated_metrics["total_examples"]
+
+        current_round = eval_metrics[0][1].get("round", -1) if eval_metrics else -1
+
+        logger.log(
+            {
+                "centralized/client_avg_test_loss": aggregated_metrics["test_loss"],
+                "centralized/client_avg_test_accuracy": aggregated_metrics["test_accuracy"],
+                "centralized/fed-round": current_round,
+            },
+            name="centralized/client_avg_test"
+        )
+
+        return aggregated_metrics
+
     return evaluate_metrics_aggregation_fn
 
 
@@ -205,5 +276,6 @@ def evaluate_server_side(
 
     return avg_loss, {"test_accuracy": accuracy}
 
-
+import os
+os.environ["RAY_DEDUP_LOGS"] = "0"
 app = ServerApp(server_fn=server_fn)
