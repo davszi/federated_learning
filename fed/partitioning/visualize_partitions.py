@@ -5,7 +5,7 @@ import numpy as np
 from collections import Counter
 
 from flwr_datasets import FederatedDataset
-from fed.partitioning import get_partitioner
+from partitioning.partitioning import get_partitioner
 
 
 def plot_label_distribution(

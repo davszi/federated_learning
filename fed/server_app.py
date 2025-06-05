@@ -1,4 +1,5 @@
 """Fed: A Flower / PyTorch app."""
+
 from pathlib import Path
 from typing import Optional, Dict, Union, Callable, List, Tuple
 
@@ -10,7 +11,6 @@ from flwr.server.strategy import FedAvg
 from fed.strategies import AdaptiveFederatedOptimization, WeightedFedAvg
 from fed.logger import LoggerFactory, Logger
 from fed.task import Net, get_weights, load_data, test, set_weights
-import wandb
 
 client_registry = {}
 
@@ -30,10 +30,7 @@ def server_fn(context: Context):
         logger_type, run_name=run_name, config=context.run_config
     )
 
-    best_model_data = {
-        "loss": float("inf"),
-        "path": Path('models') / f'{run_name}.pth'
-    }
+    best_model_data = {"loss": float("inf"), "path": Path("models") / f"{run_name}.pth"}
 
     # Define strategy
     common_strategy_props = {
@@ -42,18 +39,25 @@ def server_fn(context: Context):
         "min_available_clients": 2,
         "initial_parameters": parameters,
         "evaluate_fn": lambda round, parameters, config: evaluate_server_side(
-            round, parameters, config, context, logger=logger, best_model=best_model_data
+            round,
+            parameters,
+            config,
+            context,
+            logger=logger,
+            best_model=best_model_data,
         ),
         "on_fit_config_fn": get_on_fit_config_fn(context.run_config),
         "on_evaluate_config_fn": get_on_evaluate_config_fn(context.run_config),
         "fit_metrics_aggregation_fn": get_fit_metrics_aggregation_fn(logger=logger),
-        "evaluate_metrics_aggregation_fn": get_evaluate_metrics_aggregation_fn(logger=logger),
+        "evaluate_metrics_aggregation_fn": get_evaluate_metrics_aggregation_fn(
+            logger=logger
+        ),
         "accept_failures": False,
     }
     strategy_name = context.run_config["strategy-name"]
-    if strategy_name == 'fedavg':
+    if strategy_name == "fedavg":
         strategy = FedAvg(**common_strategy_props)
-    elif strategy_name == 'adaptive-fed-optimization':
+    elif strategy_name == "adaptive-fed-optimization":
         strategy = AdaptiveFederatedOptimization(
             **common_strategy_props,
             # Server-side hyperparameters
@@ -62,7 +66,7 @@ def server_fn(context: Context):
                 context.run_config.get("server-learning-rate", 0.01)
             ),
         )
-    elif strategy_name == 'fedavg-weighted':
+    elif strategy_name == "fedavg-weighted":
         strategy = WeightedFedAvg(**common_strategy_props)
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
@@ -103,13 +107,12 @@ def get_fit_metrics_aggregation_fn(logger: Logger = None):
             "val_accuracy": 0.0,
             "total_examples": 0,
             "participating_clients": 0,
-            "total_registered_clients": 0
+            "total_registered_clients": 0,
         }
 
         for idx, (examples, client_metrics) in enumerate(fit_metrics):
             client_id = client_metrics.get("client_id", -1)
             client_name = f"client_{idx}"
-            print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
 
             # Register client if not seen before
             if client_id not in client_registry:
@@ -126,21 +129,24 @@ def get_fit_metrics_aggregation_fn(logger: Logger = None):
 
             logger.log(
                 {
-                    f"{client_name}/train_loss": client_metrics.get("train_loss", -1.0),
-                    f"{client_name}/val_loss": client_metrics.get("val_loss", -1.0),
-                    f"{client_name}/val_accuracy": client_metrics.get(
-                        "val_accuracy", -1.0
-                    ),
-                    f"centralized/fed-round": client_metrics.get("round", -1),
+                    "train_loss": client_metrics.get("train_loss", -1.0),
+                    "val_loss": client_metrics.get("val_loss", -1.0),
+                    "val_accuracy": client_metrics.get("val_accuracy", -1.0),
                 },
                 name=client_name,
-                step=int(client_metrics.get("round", -1)),
+                step=client_metrics.get("round", -1),
             )
 
             aggregated_metrics["total_examples"] += examples
-            aggregated_metrics["train_loss"] += examples * client_metrics.get("train_loss", 0.0)
-            aggregated_metrics["val_loss"] += examples * client_metrics.get("val_loss", 0.0)
-            aggregated_metrics["val_accuracy"] += examples * client_metrics.get("val_accuracy", 0.0)
+            aggregated_metrics["train_loss"] += examples * client_metrics.get(
+                "train_loss", 0.0
+            )
+            aggregated_metrics["val_loss"] += examples * client_metrics.get(
+                "val_loss", 0.0
+            )
+            aggregated_metrics["val_accuracy"] += examples * client_metrics.get(
+                "val_accuracy", 0.0
+            )
 
         if aggregated_metrics["total_examples"] > 0:
             aggregated_metrics["train_loss"] /= aggregated_metrics["total_examples"]
@@ -154,12 +160,12 @@ def get_fit_metrics_aggregation_fn(logger: Logger = None):
 
         logger.log(
             {
-                "centralized/client_avg_train_loss": aggregated_metrics["train_loss"],
-                "centralized/client_avg_val_loss": aggregated_metrics["val_loss"],
-                "centralized/client_avg_val_accuracy": aggregated_metrics["val_accuracy"],
-                "centralized/fed-round": current_round,
+                "client_avg_train_loss": aggregated_metrics["train_loss"],
+                "client_avg_val_loss": aggregated_metrics["val_loss"],
+                "client_avg_val_accuracy": aggregated_metrics["val_accuracy"],
             },
-            name="centralized/client_avg"
+            name="centralized",
+            step=current_round,
         )
 
         return aggregated_metrics
@@ -183,21 +189,12 @@ def get_evaluate_metrics_aggregation_fn(logger: Logger = None):
             "total_examples": 0,
         }
 
-
         for idx, (examples, client_metrics) in enumerate(eval_metrics):
-            client_id = client_metrics.get("client_id", -1)
             client_name = f"client_{idx}"
-            print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
-
-            print(f"Logging steps for {client_id}, step: {int(client_metrics.get('round', -1))}")
             logger.log(
                 {
-                    f"{client_name}/test_loss": client_metrics.get(
-                        "test_loss", -1.0
-                    ),
-                    f"{client_name}/test_accuracy": client_metrics.get(
-                        "test_accuracy", -1.0
-                    ),
+                    "test_loss": client_metrics.get("test_loss", -1.0),
+                    "test_accuracy": client_metrics.get("test_accuracy", -1.0),
                 },
                 name=client_name,
                 step=int(client_metrics.get("round", -1)),
@@ -219,11 +216,11 @@ def get_evaluate_metrics_aggregation_fn(logger: Logger = None):
 
         logger.log(
             {
-                "centralized/client_avg_test_loss": aggregated_metrics["test_loss"],
-                "centralized/client_avg_test_accuracy": aggregated_metrics["test_accuracy"],
-                "centralized/fed-round": current_round,
+                "client_avg_test_loss": aggregated_metrics["test_loss"],
+                "client_avg_test_accuracy": aggregated_metrics["test_accuracy"],
             },
-            name="centralized/client_avg_test"
+            name="centralized",
+            step=current_round,
         )
 
         return aggregated_metrics
@@ -251,7 +248,7 @@ def evaluate_server_side(
         num_partitions=1,  # Server uses centralized evaluation
         dataset_name=dataset_name,
         partitioning_strategy="iid",
-        test_size=0.99, # 0.0 and 1.0 is not allowed
+        test_size=0.99,  # 0.0 and 1.0 is not allowed
         validate_size=0.0,
         seed=seed if seed != -1 else None,
         batch_size=context.run_config["batch-size"],
@@ -266,16 +263,20 @@ def evaluate_server_side(
             "test_accuracy": accuracy,
             "fed-round": server_round,
         },
-        name='centralized'
+        name="centralized",
     )
     if avg_loss < best_model["loss"]:
         best_model["loss"] = avg_loss
         best_model["path"].parent.mkdir(parents=True, exist_ok=True)
         torch.save(net.state_dict(), best_model["path"])
-        print(f"[Round {server_round}] New best model saved with test_loss={avg_loss:.4f}")
+        print(
+            f"[Round {server_round}] New best model saved with test_loss={avg_loss:.4f}"
+        )
 
     return avg_loss, {"test_accuracy": accuracy}
 
+
 import os
+
 os.environ["RAY_DEDUP_LOGS"] = "0"
 app = ServerApp(server_fn=server_fn)

@@ -44,26 +44,14 @@ client-optimizer = "adam"
 
 logger-type="wandb" # "file" or "wandb"
 strategy-name = "fedavg-weighted"
-partitioning-strategy = "iid"
+partitioning-strategy = "iid" # Available strategies: "iid", "dirichlet", "pathological", "shard", "size", "linear", "square", "exponential"
 dataset = "uoft-cs/cifar10"
 
 # Optional partitioning parameters (uncomment as needed)
 # For Dirichlet partitioning
-dirichlet-alpha = 0.5
+#dirichlet-alpha = 0.5
 # For Pathological partitioning
 # num_classes-per-partition = 2
-
-# PARTITIONING_STRATEGIES = {
-#    "iid": IidPartitioner,
-#    "dirichlet": DirichletPartitioner,
-#    "pathological": PathologicalPartitioner,
-#    "shard": ShardPartitioner,
-#    "size": SizePartitioner,
-#    "linear": LinearPartitioner,
-#    "square": SquarePartitioner,
-#    "exponential": ExponentialPartitioner,
-#}
-
 
 [tool.flwr.federations]
 default = "local-simulation"

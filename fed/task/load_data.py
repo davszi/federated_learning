@@ -3,7 +3,7 @@ from typing import Optional
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
 
-from fed.partitioning import load_partitioned_dataset
+from fed.partitioning.partitioning import load_partitioned_dataset
 
 
 # Global cache for FederatedDataset

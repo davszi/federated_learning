@@ -1,4 +1,5 @@
 """Fed: A Flower / PyTorch app."""
+
 import random
 
 import torch
@@ -21,7 +22,9 @@ def select_epochs_count(partition_id: int) -> int:
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
-    def __init__(self, net, trainloader, valloader, testloader, id, num_epochs: int, logger=None):
+    def __init__(
+        self, net, trainloader, valloader, testloader, id, num_epochs: int, logger=None
+    ):
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
@@ -104,15 +107,17 @@ def client_fn(context: Context):
         num_partitions=num_partitions,
         dataset_name=dataset_name,
         partitioning_strategy=partitioning_strategy,
-        test_size=0.2,
-        validate_size=0.1,
+        test_size=0.2,  # % of whole dataset to use for testing, rest is training + validation
+        validate_size=0.1,  # % of train subset to use for validation, rest is training
         seed=seed if seed != -1 else None,
         batch_size=context.run_config["batch-size"],
         **partitioning_kwargs
     )
     num_epochs = select_epochs_count(partition_id)
 
-    return FlowerClient(net, trainloader, valloader, testloader,partition_id, num_epochs).to_client()
+    return FlowerClient(
+        net, trainloader, valloader, testloader, partition_id, num_epochs
+    ).to_client()
 
 
 app = ClientApp(
