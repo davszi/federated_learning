@@ -1,4 +1,4 @@
-# Federated Learning with Flower and PyTorch
+# FedLab-Flower
 
 This repository implements a flexible and extensible federated learning pipeline using [Flower](https://flower.dev/) and
 PyTorch. It supports multiple aggregation strategies, data partitioning methods, and is designed to simulate realistic
