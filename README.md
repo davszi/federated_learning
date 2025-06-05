@@ -103,6 +103,7 @@ results and discussion.
 
 - David Szilagyi – [@davszi](https://github.com/davszi)
 - Răzvan-Gabriel Petec – [@razvan404](https://github.com/razvan404)
+- Torok Armin - [@ArminT28](https://github.com/ArminT28)
 
 ## 📄 License
 
