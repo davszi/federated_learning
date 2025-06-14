@@ -3,12 +3,18 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 from flwr.common import NDArrays
-from torchvision.models import vgg11
+from torchvision.models import vgg11, resnet18
 
 
-def Net() -> nn.Module:
-    return vgg11(weights=None)
-
+def Net(architecture: str) -> nn.Module:
+    architecture = architecture.lower()
+    match architecture:
+        case "vgg11":
+            return vgg11(weights=None)
+        case "resnet18":
+            return resnet18(weights=None)
+        case _:
+            raise ValueError(f"Unsupported network architecture: {architecture}")
 
 def get_weights(net) -> NDArrays:
     return [val.cpu().numpy() for _, val in net.state_dict().items()]

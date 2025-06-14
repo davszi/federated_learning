@@ -92,13 +92,12 @@ class AdaptiveFederatedOptimization(FedAvg):
     def initialize_parameters(
         self, client_manager: ClientManager
     ) -> Optional[Parameters]:
-        # Check if initial_parameters are provided
         if self.initial_parameters is not None:
             ndarrays = parameters_to_ndarrays(self.initial_parameters)
         else:
-            # Otherwise create new model
-            net = Net()
-            ndarrays = get_weights(net)
+            raise ValueError(
+                "Initial parameters must be provided for Adaptive Federated Optimization."
+            )
 
         self.current_weights = ndarrays
         self.m_t = [np.zeros_like(w) for w in ndarrays]

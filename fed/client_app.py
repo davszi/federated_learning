@@ -80,7 +80,8 @@ class FlowerClient(NumPyClient):
 
 
 def client_fn(context: Context):
-    net = Net()
+    architecture = context.run_config.get("architecture", "vgg11")
+    net = Net(architecture=architecture)
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
 
@@ -113,7 +114,13 @@ def client_fn(context: Context):
         batch_size=context.run_config["batch-size"],
         **partitioning_kwargs
     )
-    num_epochs = select_epochs_count(partition_id)
+    different_compute_frag = context.run_config.get(
+        "different-compute", False
+    )  # If True, use different epochs for each partition
+    if different_compute_frag:
+        num_epochs = select_epochs_count(partition_id)
+    else:
+        num_epochs = context.run_config["local-epochs"]
 
     return FlowerClient(
         net, trainloader, valloader, testloader, partition_id, num_epochs

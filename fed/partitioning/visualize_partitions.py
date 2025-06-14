@@ -5,7 +5,7 @@ import numpy as np
 from collections import Counter
 
 from flwr_datasets import FederatedDataset
-from partitioning.partitioning import get_partitioner
+from fed.partitioning.partitioning import get_partitioner
 
 
 def plot_label_distribution(
@@ -13,6 +13,8 @@ def plot_label_distribution(
     strategy: str,
     num_partitions: int,
     file_name: str,
+    display_name: str = None,
+    close_figure: bool = True,
     **kwargs
 ):
     """Plot the distribution of labels across partitions for a given strategy.
@@ -69,10 +71,11 @@ def plot_label_distribution(
         aspect='auto',
         cmap='viridis'
     )
+    display_name = display_name or strategy
     plt.colorbar(heatmap, label='Percentage of samples (%)')
     plt.xlabel('Class Label')
     plt.ylabel('Partition ID')
-    plt.title(f'Label Distribution Across Partitions ({strategy})')
+    plt.title(f'Label Distribution Across Partitions ({display_name})')
     plt.xticks(range(num_classes))
     plt.yticks(range(num_partitions), range(num_partitions))
 
@@ -81,24 +84,57 @@ def plot_label_distribution(
     plt.bar(range(num_partitions), partition_sizes)
     plt.xlabel('Partition ID')
     plt.ylabel('Number of Samples')
-    plt.title(f'Partition Sizes ({strategy})')
+    plt.title(f'Partition Sizes ({display_name})')
     plt.xticks(range(num_partitions), range(num_partitions))
 
     plt.tight_layout()
     plt.savefig(file_name)
-    plt.close()  # Close the figure to free memory
+    if close_figure:
+        plt.close()  # Close the figure to free memory
 
     print(f"Visualization saved to {file_name}")
 
 
-def generate_all_visualizations(dataset='uoft-cs/cifar10', num_partitions=10):
+def generate_all_visualizations(strategies: list[dict],dataset='uoft-cs/cifar10', num_partitions=3):
     """Generate visualizations for all supported partitioning strategies.
 
     Args:
         dataset: Name of the dataset to use
         num_partitions: Number of partitions to create
     """
-    # Define all strategies with their required parameters
+
+    for strategy_config in strategies:
+        strategy_name = strategy_config["name"]
+        params = strategy_config["params"]
+
+        # Add suffix to strategy name if provided
+        if "suffix" in strategy_config:
+            strategy_display = f"{strategy_name}-{strategy_config['suffix']}"
+        else:
+            strategy_display = strategy_name
+
+        print(f"\n{'='*50}")
+        print(f"Generating visualization for {strategy_display} strategy")
+        print(f"{'='*50}\n")
+
+        try:
+            plot_label_distribution(
+                dataset=dataset,
+                strategy=strategy_name,
+                num_partitions=num_partitions,
+                file_name=f'partition_distribution_{strategy_display}.png',
+                display_name=strategy_display,  # Use display name for the plot title
+                **params
+            )
+
+        except Exception as e:
+            print(f"Error generating visualization for {strategy_display}: {e}")
+
+    print("\nAll visualizations generated successfully!")
+
+
+if __name__ == "__main__":
+
     strategies = [
         {
             "name": "iid",
@@ -115,12 +151,19 @@ def generate_all_visualizations(dataset='uoft-cs/cifar10', num_partitions=10):
         },
         {
             "name": "pathological",
-            "params": {"num_classes_per_partition": 2}
+            "params": {"num_classes_per_partition": 4}
         },
         {
             "name": "pathological",
-            "params": {"num_classes_per_partition": 1},
-            "suffix": "extreme"
+            "params": {"num_classes_per_partition": 4,
+                       "class_assignment_mode": "first-deterministic"},
+            "suffix": "first-deterministic",
+        },
+        {
+            "name": "pathological",
+            "params": {"num_classes_per_partition": 4,
+                       "complete_mode": True},
+            "suffix": "complete",
         },
         {
             "name": "shard",
@@ -144,37 +187,6 @@ def generate_all_visualizations(dataset='uoft-cs/cifar10', num_partitions=10):
         }
     ]
 
-    for strategy_config in strategies:
-        strategy_name = strategy_config["name"]
-        params = strategy_config["params"]
-
-        # Add suffix to strategy name if provided
-        if "suffix" in strategy_config:
-            strategy_display = f"{strategy_name}_{strategy_config['suffix']}"
-        else:
-            strategy_display = strategy_name
-
-        print(f"\n{'='*50}")
-        print(f"Generating visualization for {strategy_display} strategy")
-        print(f"{'='*50}\n")
-
-        try:
-            plot_label_distribution(
-                dataset=dataset,
-                strategy=strategy_name,  # Use base strategy name for the function
-                num_partitions=num_partitions,
-                file_name=f'partition_distribution_{strategy_display}.png',
-                **params
-            )
-
-        except Exception as e:
-            print(f"Error generating visualization for {strategy_display}: {e}")
-
-    print("\nAll visualizations generated successfully!")
-
-
-if __name__ == "__main__":
-    # Call the function to generate all visualizations
     print("Starting automatic generation of federated data partitioning visualizations")
-    generate_all_visualizations()
+    generate_all_visualizations(strategies)
     print("Completed all visualizations!")

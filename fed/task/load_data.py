@@ -15,7 +15,7 @@ def load_data(
     num_partitions: int,
     dataset_name: str,
     partitioning_strategy: str,
-    seed: Optional[int] = None,
+    seed: Optional[int],
     test_size: float = 0.2,
     validate_size: float = 0.0,
     batch_size=20,
@@ -43,6 +43,7 @@ def load_data(
             dataset_name=dataset_name,
             strategy=partitioning_strategy,
             num_partitions=num_partitions,
+            seed=seed,
             **partitioning_kwargs,
         )
 

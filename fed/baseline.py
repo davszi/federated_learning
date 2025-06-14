@@ -14,6 +14,7 @@ def main():
         "lr": 0.001,
         "optimizer": "adam",
         "architecture": "VGG11",
+        "seed": 42,
     }
 
     trainloader, validateloader, testloader = load_data(
@@ -24,6 +25,7 @@ def main():
         batch_size=config["batch_size"],
         test_size=0.1,
         validate_size=0.2,
+        seed=config["seed"],
         partitioning_kwargs={},
     )
 
@@ -32,7 +34,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
     print(f"Dataset sizes: train: {len(trainloader.dataset)}, val: {len(validateloader.dataset)}, test: {len(testloader.dataset)}")
-    net = Net()
+    net = Net(architecture=config["architecture"]).to(device)
 
     train(
         net,

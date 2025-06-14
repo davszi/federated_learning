@@ -28,29 +28,33 @@ clientapp = "fed.client_app:app"
 
 [tool.flwr.app.config]
 # General configuration
-dataset = "uoft-cs/cifar10"
-partitioning-strategy = "iid" # Available strategies: "iid", "dirichlet", "pathological", "shard", "size", "linear", "square", "exponential"
+logger-type="file" # "file" or "wandb"
 seed = 35 # -1 for random seed
 
-run-name = "fedavg-weighted-iid"
-logger-type="wandb" # "file" or "wandb"
+run-name = "" # appened to the run name: "{dataset}-{architecture}-{partitioning_strategy}-{strategy_name}-{THIS_STRING}"
 
-strategy-name = "fedavg-weighted"
-strat_optimizer = "adagrad" # "yogi" or "adam" or "adagrad"
+architecture = "resnet18" # "vgg11", "resnet18",
+dataset = "uoft-cs/cifar10" # "cifar10", "cifar100", ...
 
+strategy-name = "fedopt" # "fedavg", "fedavg-weighted", "fedopt"
+strat_optimizer = "adagrad" #if FedOpt: "yogi" or "adam" or "adagrad"
+
+partitioning-strategy = "dirichlet" # "iid", "dirichlet", "pathological", "shard", "size", "linear", "square", "exponential"
 # Ex of Optional partitioning parameters (uncomment as needed)
 # For Dirichlet partitioning
-# dirichlet-alpha = 0.5
+dirichlet-alpha = 0.1
 # For Pathological partitioning
-# num_classes-per-partition = 2
+# num_classes-per-partition = 2 # For a smooth experience make sure that num_partitions * num_classes-per-partition >= num_classes in the dataset
+# complete_mode = true # If true ensures that every label is in ≥1 partitions, ref CompletePathologicalPartition
 
 # Server configuration
-num-server-rounds = 10
+num-server-rounds = 50
 fraction-fit = 1.0
 server_learning-rate = 0.01
 
 # Client configuration
 local-epochs = 10
+different_compute = false # If true, clients simulate having different compute resources
 early-stopping = true
 batch-size = 256
 client-learning-rate = 0.001
@@ -61,5 +65,5 @@ default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 3
-options.backend.client-resources.num-cpus = 1
-options.backend.client-resources.num-gpus = 0.3
+#options.backend.client-resources.num-cpus = 1
+#options.backend.client-resources.num-gpus = 0.3

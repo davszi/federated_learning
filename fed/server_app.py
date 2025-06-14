@@ -14,25 +14,28 @@ from fed.task import Net, get_weights, load_data, test, set_weights
 
 client_registry = {}
 
-
 def server_fn(context: Context):
-    # Read from config
     num_rounds = context.run_config["num-server-rounds"]
     fraction_fit = context.run_config["fraction-fit"]
+    architecture = context.run_config.get("architecture", "vgg11")
 
-    # Initialize model parameters
-    ndarrays = get_weights(Net())
+    ndarrays = get_weights(Net(architecture=architecture))
     parameters = ndarrays_to_parameters(ndarrays)
 
     run_name = context.run_config["run-name"]
+    strategy_name = context.run_config["strategy-name"]
+
+    if run_name == "":
+        dataset = context.run_config.get("dataset", "uoft-cs/cifar10")
+        partitioning_strategy = context.run_config.get("partitioning-strategy", "iid")
+        run_name = f"{dataset}-{architecture}-{partitioning_strategy}-{strategy_name}"
     logger_type = context.run_config["logger-type"]
     logger = LoggerFactory.create(
         logger_type, run_name=run_name, config=context.run_config
     )
 
-    best_model_data = {"loss": float("inf"), "path": Path("models") / f"{run_name}.pth"}
+    best_model_data = {"loss": float("inf"), "path": Path("files") / "models" / f"{run_name}.pth"}
 
-    # Define strategy
     common_strategy_props = {
         "fraction_fit": fraction_fit,
         "fraction_evaluate": 1.0,
@@ -41,7 +44,6 @@ def server_fn(context: Context):
         "evaluate_fn": lambda round, parameters, config: evaluate_server_side(
             round,
             parameters,
-            config,
             context,
             logger=logger,
             best_model=best_model_data,
@@ -54,22 +56,23 @@ def server_fn(context: Context):
         ),
         "accept_failures": False,
     }
-    strategy_name = context.run_config["strategy-name"]
-    if strategy_name == "fedavg":
-        strategy = FedAvg(**common_strategy_props)
-    elif strategy_name == "adaptive-fed-optimization":
-        strategy = AdaptiveFederatedOptimization(
-            **common_strategy_props,
-            # Server-side hyperparameters
-            optimizer_name=context.run_config.get("strat_optimizer", "adam"),
-            server_learning_rate=float(
-                context.run_config.get("server-learning-rate", 0.01)
-            ),
-        )
-    elif strategy_name == "fedavg-weighted":
-        strategy = WeightedFedAvg(**common_strategy_props)
-    else:
-        raise ValueError(f"Unknown strategy: {strategy_name}")
+
+    match strategy_name:
+        case "fedavg":
+            strategy = FedAvg(**common_strategy_props)
+        case "fedopt":
+            strategy = AdaptiveFederatedOptimization(
+                **common_strategy_props,
+                optimizer_name=context.run_config.get("strat_optimizer", "adam"),
+                server_learning_rate=float(
+                    context.run_config.get("server-learning-rate", 0.01)
+                ),
+            )
+        case "fedavg-weighted":
+            strategy = WeightedFedAvg(**common_strategy_props)
+        case _:
+            raise ValueError(f"Unknown strategy: {strategy_name}")
+
     config = ServerConfig(num_rounds=num_rounds)
 
     return ServerAppComponents(strategy=strategy, config=config)
@@ -231,22 +234,21 @@ def get_evaluate_metrics_aggregation_fn(logger: Logger = None):
 def evaluate_server_side(
     server_round: int,
     parameters: NDArrays,
-    config: dict[str, Scalar],
     context: Context,
     logger: Logger = None,
     best_model: dict = None,
 ) -> Optional[tuple[float, dict[str, Scalar]]]:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    net = Net().to(device)
 
-    dataset_name = context.run_config.get("dataset", "uoft-cs/cifar10")
+    architectuere = context.run_config.get("architecture", "vgg11")
+    net = Net(architecture=architectuere).to(device)
     seed = context.run_config.get("seed", -1)
 
     # Load test data from partition 0
     _, _, testloader = load_data(
         partition_id=0,
         num_partitions=1,  # Server uses centralized evaluation
-        dataset_name=dataset_name,
+        dataset_name=context.run_config.get("dataset", "uoft-cs/cifar10"),
         partitioning_strategy="iid",
         test_size=0.99,  # 0.0 and 1.0 is not allowed
         validate_size=0.0,
